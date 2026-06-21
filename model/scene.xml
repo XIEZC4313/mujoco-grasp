@@ -1,6 +1,10 @@
 <mujoco model="grasp_scene">
   <include file="robot.xml"/>
 
+  <visual>
+    <global offwidth="1280" offheight="720"/>
+  </visual>
+
   <worldbody>
     <!-- Table (further from arm, smaller) -->
     <body name="table" pos="0.35 0 0.15">
