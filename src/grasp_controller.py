@@ -3,6 +3,7 @@
 import numpy as np
 import mujoco
 from ik_solver import IKSolver
+from mpc_controller import MPCController
 
 
 class GraspController:
@@ -10,6 +11,7 @@ class GraspController:
         self.model = model
         self.data = data
         self.ik = IKSolver(model, data)
+        self.mpc = MPCController(model, data)
 
         self.finger_left_ctrl = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, "act_finger_left")
         self.finger_right_ctrl = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, "act_finger_right")
@@ -41,6 +43,18 @@ class GraspController:
                 time.sleep(delay)
         return success
 
+    def move_to_mpc(self, target_pos, max_steps=300, tol=0.01, viewer=None, delay=0.001):
+        """Move to target using MPC closed-loop control."""
+        # Get IK solution for joint reference
+        q_ref, _ = self.ik.solve_position(target_pos, max_iter=500, tol=0.005)
+
+        # Use MPC for closed-loop tracking
+        success, errors = self.mpc.move_to_target(
+            target_pos, target_q=q_ref, max_steps=max_steps,
+            tol=tol, viewer=viewer, delay=delay
+        )
+        return success
+
     def incremental_adjust(self, delta_angles, n_steps=10, steps_per_step=50, viewer=None, delay=0.001):
         import time
         for _ in range(n_steps):
@@ -62,7 +76,7 @@ class GraspController:
                 viewer.sync()
                 time.sleep(delay)
 
-    def execute_pick_and_place(self, object_name, target_pos, viewer=None, delay=0.001):
+    def execute_pick_and_place(self, object_name, target_pos, viewer=None, delay=0.001, use_mpc=False):
         """Pick object from current position and place at target.
 
         Args:
@@ -70,10 +84,14 @@ class GraspController:
             target_pos: [x, y, z] position to place the object
             viewer: MuJoCo viewer (optional)
             delay: Step delay for visualization
+            use_mpc: Use MPC closed-loop control (default: False)
         """
+        move_fn = self.move_to_mpc if use_mpc else self.move_to
+
         obj_pos = self.get_object_pos(object_name)
         print(f"Object at: {obj_pos}")
         print(f"Target: {target_pos}")
+        print(f"Control mode: {'MPC' if use_mpc else 'Open-loop'}")
 
         # === PICK ===
         # 1. Move above object
@@ -81,11 +99,17 @@ class GraspController:
         self.open_gripper()
         above = obj_pos.copy()
         above[2] += 0.06
-        self.move_to(above, steps=300, viewer=viewer, delay=delay)
+        if use_mpc:
+            move_fn(above, viewer=viewer, delay=delay)
+        else:
+            move_fn(above, steps=300, viewer=viewer, delay=delay)
 
         # 2. Lower to object
         print("2. Lower to object")
-        self.move_to(obj_pos, steps=300, viewer=viewer, delay=delay)
+        if use_mpc:
+            move_fn(obj_pos, viewer=viewer, delay=delay)
+        else:
+            move_fn(obj_pos, steps=300, viewer=viewer, delay=delay)
 
         # 3. Close gripper
         print("3. Close gripper")

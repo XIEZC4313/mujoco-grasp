@@ -114,8 +114,8 @@ def main():
     cam.distance = 0.9
     cam.elevation = -30
 
-    # === Scene 3: Pick and Place ===
-    print("  Scene 3: Pick and place")
+    # === Scene 3: Pick and Place (MPC Control) ===
+    print("  Scene 3: Pick and place (MPC)")
     mujoco.mj_resetData(model, data)
     controller.ik.set_joint_angles(initial_angles)
     controller.open_gripper()
@@ -127,22 +127,23 @@ def main():
     obj_pos = controller.get_object_pos("green_block")
     target_place = np.array([0.4, -0.12, 0.19])
 
-    # 1. Move above object
-    print("    1. Move above object")
+    # 1. Move above object (MPC)
+    print("    1. Move above object (MPC)")
     above = obj_pos.copy()
     above[2] += 0.06
     controller.open_gripper()
-    joint_angles, _ = controller.ik.solve_position(above, max_iter=500, tol=0.005)
-    controller.ik.set_joint_angles(joint_angles)
-    for i in range(5):
-        data.ctrl[i] = 0
-    mujoco.mj_forward(model, data)
-    hold(2.0)
+    controller.move_to_mpc(above, max_steps=150, viewer=None, delay=0)
+    # Render the MPC motion
+    for _ in range(int(1.0 * FPS)):
+        mujoco.mj_step(model, data)
+        render_frame()
 
-    # 2. Lower to object
-    print("    2. Lower to object")
-    controller.move_to(obj_pos, steps=int(1.5 * FPS))
-    hold(0.5)
+    # 2. Lower to object (MPC)
+    print("    2. Lower to object (MPC)")
+    controller.move_to_mpc(obj_pos, max_steps=150, viewer=None, delay=0)
+    for _ in range(int(0.5 * FPS)):
+        mujoco.mj_step(model, data)
+        render_frame()
 
     # 3. Close gripper
     print("    3. Close gripper")
